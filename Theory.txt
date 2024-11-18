@@ -1,0 +1,286 @@
+1. Ce este Cassandra?
+
+Cassandra este o bază de date special concepută să gestioneze volume mari de date, să fie foarte rapidă și să poată fi scalată ușor pe mai multe servere.
+
+2. Cum stochează datele Cassandra?
+
+Nu se bazează pe relații și tabele conectate între ele, ci mai degrabă pe „grupuri de date” optimizate pentru interogări rapide.
+
+3. Cum e structurat un model de date în Cassandra?
+
+În Cassandra, datele sunt organizate în:
+
+    - Keyspace: un fel de container, ca o bază de date, care conține tabele și setările de replicare (de câte ori sunt duplicate datele pe mai multe servere pentru siguranță).
+    - Tabele (Column Families): asemănătoare tabelelor din SQL, dar structurate pentru a se potrivi cu interogările specifice ale aplicației.
+
+4. Chei de Partiționare și Clustering
+
+Ca să știe unde să găsească rapid datele, Cassandra folosește două tipuri de chei:
+
+    Cheia de partiționare: Ajută la distribuirea datelor pe mai multe servere. De exemplu, dacă avem un tabel de comenzi și folosim order_id ca și cheie de partiționare,
+                         Cassandra va distribui comenzile pe servere diferite folosind acest order_id.
+    Cheia de clustering: Ordonează datele într-un anumit fel în cadrul unui server. De exemplu, dacă vrem să păstrăm comenzile unui client în ordinea în care au fost plasate, 
+                        vom folosi data_comenzii ca și cheie de clustering.
+
+---
+
+1. Understanding Partition/Clustering Key
+
+În Cassandra, Primary Key este compusă din:
+
+    Partition Key – determină modul în care datele sunt distribuite pe noduri.
+    Clustering Key – organizează ordinea datelor într-un nod specific.
+
+Formula:
+Primary Key=Partition Key+Clustering Key
+
+    Partition Key:
+
+ - Tokenizare: Cassandra transformă `Partition Key` într-un token numeric folosind o funcție hash.
+   
+ - Token-uri pe Noduri: Fiecare nod primește un interval de token-uri, împărțind spațiul total de token-uri în cluster.
+
+ - Atribuirea Datelor: Pentru fiecare rând nou, Cassandra calculează tokenul și îl trimite nodului corespunzător intervalului.
+
+Astfel, Partition Key decide pe ce nod se stochează datele, asigurând o distribuție echilibrată a acestora.
+
+    Clustering Key:
+
+După ce un rând de date a ajuns pe nodul corect, Clustering Key intră în acțiune pentru a organiza ordinea rândurilor în cadrul nodului respectiv.
+
+ - Pe un nod, toate rândurile cu același 'Partition Key' sunt grupate împreună.
+ - Clustering Key stabilește ordinea în care aceste rânduri sunt stocate. 
+
+De exemplu, dacă Clustering Key este o coloană de timp (timestamp), atunci datele vor fi stocate în ordine cronologică pe nod.
+
+Exemplu: PRIMARY KEY (customer_id, order_date)
+
+Recomandări pentru Performanță
+ - Distribuție echilibrată: Alege un Partition Key care să distribuie datele uniform între noduri. Poți folosi combinații de coloane pentru a evita concentrarea datelor pe același nod.
+
+ - Reducerea dimensiunii unui Partition Key: Încearcă să menții partițiile mici (de preferință sub 100 MB per partiție) pentru a preveni scăderea performanței citirii și scrierii.
+
+ - Clustering Key pentru ordonare eficientă: Folosește un Clustering Key care ajută la organizarea datelor pe nod și reduce necesitatea de a face sortări la interogări.
+
+2. Data Types pentru Cassandra
+
+ - Tipuri de Date Standard (int, float, var, bigint, etc)
+ - Tipuri de Date pentru Identificatori și Date Timp:
+    1. UUID - Un identificator unic universal (128 de biți), util pentru ID-uri de rânduri.
+    2. timeuuid – Similar cu UUID, dar care include și informații despre timp (util în sortarea datelor cronologic)
+    3. timestamp – O valoare temporală, cu precizie la milisecundă (de obicei, format UNIX).
+ 
+ - Tipuri de Date Colecții:
+    1. list<type> – O listă ordonată de elemente de același tip.
+    2. set<type> – O mulțime de elemente unice, fără ordonare.
+    3. map<key_type, value_type> – O structură de perechi cheie-valoare, similară cu un dicționar (elementele sunt unice pe baza cheilor).
+ 
+ - Tipuri de Date Speciale:
+    1. blob – O secvență binară de date, utilă pentru stocarea datelor brute.
+    2. inet – Reprezintă o adresă IP (IPv4 sau IPv6), utilă pentru stocarea IP-urilor.
+
+3. Cassandra Arhitecture
+
+ .1: Replicarea = procesul de copiere a datelor pe mai multe noduri din cluster pentru a asigura disponibilitate și reziliență.
+    - Replication Factor (RF): Numărul de copii ale datelor pe care le stochezi pe noduri. De exemplu, dacă RF = 3, datele sunt copiate pe 3 noduri.
+    - Replication Strategy:
+    
+        SimpleStrategy: Folosit pentru un singur datacenter.
+        NetworkTopologyStrategy: Folosit pentru mai multe datacentere, oferind control asupra replicării în fiecare datacenter.
+
+Exemplu:
+
+```cql
+CREATE KEYSPACE my_keyspace 
+WITH replication = {'class': 'NetworkTopologyStrategy', 'dc1': 3, 'dc2': 3};
+```
+
+Niveluri de Consistency:
+
+    - ONE: Cel puțin un nod confirmă.
+    - QUORUM: Majoritatea nodurilor confirmă.
+    - ALL: Toate nodurile confirmă.
+
+  .2: Write/Read Consistency
+
+Write Consistency se referă la numărul de noduri care trebuie să confirme o scriere pentru ca aceasta să fie considerată completă și să fie acceptată de sistem.
+Read Consistency se referă la numărul de noduri care trebuie să confirme o citire pentru ca rezultatul să fie considerat corect și valabil.
+
+ .3:Node Gossip Protocol
+
+Node Gossip Protocol este un mecanism utilizat de Apache Cassandra pentru a permite nodurilor dintr-un cluster să comunice între ele și să-și sincronizeze starea.
+Acest protocol ajută la menținerea consistenței și disponibilității datelor într-un sistem distribuit, asigurându-se că fiecare nod are informații actualizate
+    despre celelalte noduri din cluster.
+
+Exemple de date transmise prin Gossip:
+
+    - Starea nodului: Activ, inaccesibil, offline, etc.
+    - Info despre replici: Ce date sunt stocate pe ce noduri.
+    - Starea memoriei: Câtă memorie folosește nodul respectiv.
+    - Sarcini de mentenanță: Dacă un nod este în proces de rebalansare a datelor sau alte sarcini administrative.
+
+ .4: How write works ?
+
+ 1. Commit Log:
+    - Commit log-ul este un fișier jurnal care înregistrează toate scrierile efectuate într-o bază de date Cassandra.
+    - La fiecare scriere în baza de date, datele sunt mai întâi salvate în commit log. Commit log-ul este utilizat pentru a 
+        recupera datele care nu au fost încă scrise în memoria principală (Memtable) sau pe disk (SSTables) în caz de repornire sau crash al nodului.
+ 
+ 2. Memtable:
+    - o structură de date în memorie care stochează temporar datele care au fost scrise într-un anumit tabel. 
+    - Memtable-ul este o zonă în memorie rapidă unde datele sunt plasate înainte de a fi persistate pe disk.
+    -  După ce datele sunt scrise în commit log, ele sunt stocate în Memtable pentru o perioadă scurtă. Memtable-ul este gestionat de fiecare nod 
+        și conține datele care au fost actualizate recent. Când Memtable-ul se umple, acesta este transformat într-un fișier pe disk (SSTable) 
+        și se șterge din memorie
+
+ 3. SSTable (Sorted String Table):
+    - este un fișier pe disk care conține datele stocate într-un format sortat. 
+        Este creat atunci când un Memtable este „scris” pe disk, adică datele din memorie sunt salvate pe disk.
+
+ 4. Data Files (SSTables): fiecare SSTable conține date stocate permanent și sunt organizate în blocuri de date pentru a îmbunătăți performanța citirii.
+
+Cum interacționează aceste componente?
+
+1.Datele din Memtable sunt scrise pe disk într-un fișier SSTable.
+2.Commit log-ul poate fi apoi curățat pentru a economisi spațiu pe disc.
+3.În momentul citirii, Cassandra va căuta mai întâi în Memtable (pentru datele cele mai recente).
+4.Dacă datele nu sunt în Memtable, va căuta în fișierele SSTable.
+
+
+ .5: Configuration Files: pentru a controla comportamentul si functionalitatea fiecarui nod din cluster
+
+Fisiere importante de configurare:
+
+--- Partea Practica ---
+(cred ca voi folosi un container cu imagine de baza Ubuntu pt a creea un cluster de Cassandra - poate 2 pt a avea mai multe noduri)
+
+1. Instalare Cassandra pe Ubuntu 22.04 LTS: https://www.youtube.com/watch?v=-9P4CxRWL8c
+2. Configuration Files - teorie si ce face fiecare
+3. Utilizare `nodetool` - cli pt informatii despre cluster
+
+//4. Java Connector
+
+Adaugare connecter pe un VM/container si un cluster de cassandra pe alt VM
+
+--------------------------
+
+Avem cluster_network si dc1/dc2_network
+
+Cluster network:
+
+"Containers": {
+            "080ee9c8b80c6c5d90d5a5b7e569f5252424330dfe45b868aa7d9238273bc3da": {
+                "Name": "cassandra_dc1_node2",
+                "EndpointID": "0b42f8f761dab75af094bc0bf6b2ae6986c79c3c8c75a79dc7beb4c0593b49f7",
+                "MacAddress": "02:42:ac:14:00:04",
+                "IPv4Address": "172.20.0.4/16",
+                "IPv6Address": ""
+            },
+            "20343e7ca314d2772aa1f526bafe6717c2fae0fe58a2269a5ed61331bcdd62a5": {
+                "Name": "cassandra_dc1_node1",
+                "EndpointID": "c9566494d8f69728a3c635c4dcad4964cd855a0720ce60cc9cf50d921abca2b9",
+                "MacAddress": "02:42:ac:14:00:03",
+                "IPv4Address": "172.20.0.3/16",
+                "IPv6Address": ""
+            },
+            "54eb143b78989c13d35d6b54215377eb4bbc3a4aacb4022eee5d43da28516474": {
+                "Name": "cassandra_dc2_node2",
+                "EndpointID": "526f6914ad1219b475e367dc15d4724d5d8c4cc73b168624579f7a556f9e0acc",
+                "MacAddress": "02:42:ac:14:00:05",
+                "IPv4Address": "172.20.0.5/16",
+                "IPv6Address": ""
+            },
+            "6392061688f5832f01939d07379fc3d40e54c6314a4e4fdf90cfddc5a327c446": {
+                "Name": "cassandra_dc2_node1",
+                "EndpointID": "7f431adcf548d04f11c5f2fe7266b23e3e0dc5f1a56f548aa8079d76f9752834",
+                "MacAddress": "02:42:ac:14:00:02",
+                "IPv4Address": "172.20.0.2/16",
+                "IPv6Address": ""
+            },
+            "c5fe73f4f47f9cb4bf4185ec6b1437addd894d6f82173a4b9c8390479f359c95": {
+                "Name": "cassandra_connector",
+                "EndpointID": "60972e391e6a433e2420bd1232e9c79672ca5c77f086ffb2318b01e500651f38",
+                "MacAddress": "02:42:ac:14:00:06",
+                "IPv4Address": "172.20.0.6/16",
+                "IPv6Address": ""
+            }
+        },
+
+Lasam rpc_address 0.0.0.0 -> pentru a accepta conexiuni din toate retelele externe
+
+Recomandat:
+
+rpc_address: <IP-ul_pe_dc2_network>
+broadcast_rpc_address: <IP-ul_pe_cluster_network>
+
+Pt seeds:
+ seeds: "10.0.0.11,10.0.0.12"  # IP-urile de pe cluster_network ale nodurilor seed
+
+---------
+
+Nodurile din dc1
+
+    Nodul cassandra_dc1_node1 (IP: 172.20.0.3)
+
+cluster_name: 'MyCluster'
+listen_address: 172.20.0.3
+broadcast_address: 172.20.0.3
+rpc_address: 172.20.0.3
+broadcast_rpc_address: 172.20.0.3
+
+seed_provider:
+  - class_name: org.apache.cassandra.locator.SimpleSeedProvider
+    parameters:
+      - seeds: "172.20.0.3,172.20.0.2"  # Noduri seed din dc1 și dc2
+endpoint_snitch: GossipingPropertyFileSnitch
+
+Nodul cassandra_dc1_node2 (IP: 172.20.0.4)
+
+    cluster_name: 'MyCluster'
+    listen_address: 172.20.0.4
+    broadcast_address: 172.20.0.4
+    rpc_address: 172.20.0.4
+    broadcast_rpc_address: 172.20.0.4
+
+    seed_provider:
+      - class_name: org.apache.cassandra.locator.SimpleSeedProvider
+        parameters:
+          - seeds: "172.20.0.3,172.20.0.2"  # Noduri seed din dc1 și dc2
+    endpoint_snitch: GossipingPropertyFileSnitch
+
+Nodurile din dc2
+
+    Nodul cassandra_dc2_node1 (IP: 172.20.0.2)
+
+cluster_name: 'MyCluster'
+listen_address: 172.20.0.2
+broadcast_address: 172.20.0.2
+rpc_address: 172.20.0.2
+broadcast_rpc_address: 172.20.0.2
+
+seed_provider:
+  - class_name: org.apache.cassandra.locator.SimpleSeedProvider
+    parameters:
+      - seeds: "172.20.0.3,172.20.0.2"  # Noduri seed din dc1 și dc2
+endpoint_snitch: GossipingPropertyFileSnitch
+
+Nodul cassandra_dc2_node2 (IP: 172.20.0.5)
+
+cluster_name: 'MyCluster'
+listen_address: 172.20.0.5
+broadcast_address: 172.20.0.5
+rpc_address: 172.20.0.5
+broadcast_rpc_address: 172.20.0.5
+
+seed_provider:
+  - class_name: org.apache.cassandra.locator.SimpleSeedProvider
+    parameters:
+      - seeds: "172.20.0.3,172.20.0.2"  # Noduri seed din dc1 și dc2
+endpoint_snitch: GossipingPropertyFileSnitch
+
+-----
+
+Instalare `nano`:
+
+    apt-get update
+    apt-get install -y nano

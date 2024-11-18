@@ -1,0 +1,69 @@
+version: '3.8'
+
+services:
+  # Noduri Cassandra pentru DC1
+  cassandra_dc1_node1:
+    image: cassandra:latest
+    container_name: cassandra_dc1_node1
+    networks:
+      - dc1_network
+      - cluster_network
+    volumes:
+      - cassandra_dc1_node1_data:/var/lib/cassandra
+
+  cassandra_dc1_node2:
+    image: cassandra:latest
+    container_name: cassandra_dc1_node2
+    networks:
+      - dc1_network
+      - cluster_network
+    volumes:
+      - cassandra_dc1_node2_data:/var/lib/cassandra
+
+  # Noduri Cassandra pentru DC2
+  cassandra_dc2_node1:
+    image: cassandra:latest
+    container_name: cassandra_dc2_node1
+    networks:
+      - dc2_network
+      - cluster_network
+    volumes:
+      - cassandra_dc2_node1_data:/var/lib/cassandra
+
+  cassandra_dc2_node2:
+    image: cassandra:latest
+    container_name: cassandra_dc2_node2
+    networks:
+      - dc2_network
+      - cluster_network
+    volumes:
+      - cassandra_dc2_node2_data:/var/lib/cassandra
+
+  # Connector Python
+  cassandra_connector:
+    image: python:3.10
+    container_name: cassandra_connector
+    networks:
+      - cluster_network
+    volumes:
+      - ./connector:/app
+    command: tail -f /dev/null
+    depends_on:
+      - cassandra_dc1_node1
+      - cassandra_dc1_node2
+      - cassandra_dc2_node1
+      - cassandra_dc2_node2
+
+networks:
+  dc1_network:
+    driver: bridge
+  dc2_network:
+    driver: bridge
+  cluster_network:
+    driver: bridge
+
+volumes:
+  cassandra_dc1_node1_data:
+  cassandra_dc1_node2_data:
+  cassandra_dc2_node1_data:
+  cassandra_dc2_node2_data:
