@@ -165,47 +165,14 @@ Pentru a controla comportamentul și funcționalitatea fiecărui nod din cluster
 
 ## Partea Practica
 
-Crearea a 2 containere, in aceeasi retea. Acestea vor fi:
-
-- `ubuntu-cassandra-db`: care ruleaza o imagine de Ubuntu 22.04, cu ajutorul comenzii:
-
-        docker run -d --name cassandra-db-{1,2,3,4} --network cassandra-network-{1,2} -p 9042:9042 ubuntu:22.04 /bin/bash -c "tail -f /dev/null"
-
-- `ubuntu-cassandra-db`: care ruleaza o imagine de Python 3.9, cu ajutorul comenzii:
-
-        docker run -d --name connector --network cassandra-network python:3.9 /bin/bash -c "tail -f /dev/null"
-
-Pentru a verifica rularea in aceeasi retea a celor 2 containere: `docker network inspect cassandra-network`, si vom avea
-
-```json
-"Containers": {
-            "2caa30159f537744d7fd20bb30dd1009e6f939b28a5cf1cf8e423cb2df0b13d3": {
-                "Name": "python-connector",
-                "EndpointID": "4ca1f23898a2cb44af0b4dae4098f65e3e4f15f005fee0fd8ee079ac05341771",
-                "MacAddress": "02:42:ac:12:00:03",
-                "IPv4Address": "172.18.0.3/16", // IP container Python
-                "IPv6Address": ""
-            },
-            "3d1daa57bbe2b032047f41ecc815a1be4e76c94e5d8fb591ddf44a0d76bad26e": {
-                "Name": "ubuntu-cassandra-db",
-                "EndpointID": "df153f861b854710cbb91c717ad0e23d144217189c1d6f727e365ec694238097",
-                "MacAddress": "02:42:ac:12:00:02",
-                "IPv4Address": "172.18.0.2/16", // IP container Cassandra
-                "IPv6Address": ""
-            }
-        },
-```
-
-#### Instalare Cassandra pe Container-ul ce ruleaza Ubuntu
-
-Accesam Interactive Mode cu ajutorul comenzii: `docker exec -it ubuntu-cassandra-db bash`
-
 Rulam `docker-compose.yaml`, apoi vom avea 3 retele(2 reprezentand DC-urile):
 - dc1_network
 - dc2_network
 - cluster_network(contine DC1 si DC2 si Python Controller-ul)
 
 Iar fisierele de configurare a fiecarui nod de Cassandra vor fi stocate in volumele create.
+
+Pentru a verifica retelele folosim comanda:`docker network inspect <network-name>`
 
 Configurarea fiecarui nod se face accesand pe rand fiecare nod cu ajutorul comenzii de mai jos, iar fierele de configurare se gasesc in `/var/log/cassandra`:
 ```yaml        
